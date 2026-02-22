@@ -653,3 +653,12 @@ def run_tests() -> None:
 
 
 run_tests()
+
+
+# todo:
+# 1. why is cl negative
+# 2. check if symmetric wings correctly produce no lift
+# 3. check if the issue is specifically with the lifting form
+# vs the non-lifting form
+# 4.
+#
