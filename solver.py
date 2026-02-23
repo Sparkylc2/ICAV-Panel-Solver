@@ -64,7 +64,7 @@ def get_source_influence_coefficients(
     for p in range(panels.n_panels):
         for q in range(panels.n_panels):
 
-            # self influence is always 0.5, 0.0
+            # self influence is always -0.5, 0.0
             # if p == q:
             #     A_pq[p][q] = 0.5
             #     B_pq[p][q] = 0.0
@@ -77,8 +77,12 @@ def get_source_influence_coefficients(
             d_y = panels.ctrl_point_coords[p][1] - panels.ctrl_point_coords[q][1]
 
             # transform the relative displacement into panel q's FOR
-            x_pq = d_x * panels.cos_angles[q] + d_y * panels.sin_angles[q]
-            y_pq = d_y * panels.cos_angles[q] - d_x * panels.sin_angles[q]
+            if p == q:
+                x_pq = 0.0
+                y_pq = 0.0
+            else:
+                x_pq = d_x * panels.cos_angles[q] + d_y * panels.sin_angles[q]
+                y_pq = d_y * panels.cos_angles[q] - d_x * panels.sin_angles[q]
 
             # compute the normal and tangential velocity contributions (in panel q's FOR)
             len_panel_q = panels.l_panels[q]
@@ -91,7 +95,7 @@ def get_source_influence_coefficients(
             v_yq_num = y_pq * len_panel_q
             v_yq_denom = x_pq**2 + y_pq**2 - (0.5 * len_panel_q) ** 2
             # the normal velocity component (in q's FOR)
-            v_yq = 1 / (2 * np.pi) * np.atan2(v_yq_num, v_yq_denom)
+            v_yq = 1 / (2 * np.pi) * np.arctan2(v_yq_num, v_yq_denom)
 
             # now we convert to p's FOR to get the normal and tangential velocity contributions
             # theta_q - theta_p
@@ -100,8 +104,10 @@ def get_source_influence_coefficients(
             cos_d_theta = np.cos(d_theta)
 
             # the velocity contribution (in p's FOR)
-            v_n = v_yq * cos_d_theta - v_xq * sin_d_theta  # normal
-            v_t = v_xq * cos_d_theta + v_yq * sin_d_theta  # tangential
+            # v_n = v_yq * cos_d_theta - v_xq * sin_d_theta  # normal
+            # v_t = v_xq * cos_d_theta + v_yq * sin_d_theta  # tangential
+            v_n = v_yq * cos_d_theta + v_xq * sin_d_theta  # normal
+            v_t = v_xq * cos_d_theta - v_yq * sin_d_theta  # tangential
 
             # placing in our influence matrices
             A_pq[p][q] = v_n
@@ -196,6 +202,9 @@ def superimpose_solutions(
     te_panel_indices = [te_coordinate_idx - 1, te_coordinate_idx]
 
     # find dQ_te for both solutions
+    print("Q_te source", source_influence.Q[te_panel_indices])
+    print("Q_te vortex", vortex_influence.Q[te_panel_indices])
+
     dQ_te = source_influence.Q[te_panel_indices].sum()
     dQ_te_gamma = vortex_influence.Q[te_panel_indices].sum()
 
