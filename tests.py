@@ -155,15 +155,20 @@ def test_lifting_cylinder():
 
 
 def test_kutta() -> None:
-    flow_cfg = FlowConfig()
+    flow_cfg = FlowConfig(10)
     geometry_cfg = GeometryConfig(naca4("2412", 150), 1)
     state = run_solver(geometry_cfg, flow_cfg)
-    print(
-        f"Source TE sum: {state.get_source_influence().Q[state.get_result().te_panel_indices[0]] + state.get_source_influence().Q[state.get_result().te_panel_indices[1]]}"
+    source_te_sum = (
+        state.get_source_influence().Q[state.get_result().te_panel_indices[0]]
+        + state.get_source_influence().Q[state.get_result().te_panel_indices[1]]
     )
-    print(
-        f"Vortex TE sum: {state.get_vortex_influence().Q[state.get_result().te_panel_indices[0]] + state.get_vortex_influence().Q[state.get_result().te_panel_indices[1]]}"
+    vortex_te_sum = state.get_result().K * (
+        state.get_vortex_influence().Q[state.get_result().te_panel_indices[0]]
+        + state.get_vortex_influence().Q[state.get_result().te_panel_indices[1]]
     )
+    print(f"Source TE sum: {source_te_sum}")
+    print(f"Vortex TE sum: {vortex_te_sum}")
+    print(f"Total TE sum: {source_te_sum + vortex_te_sum}")
 
     B_source = state.get_source_influence().B_pq
     print(f"Max B value: {np.max(np.abs(B_source))}")

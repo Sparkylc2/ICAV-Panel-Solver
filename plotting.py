@@ -62,7 +62,7 @@ def plot_cp_distribution(
     geometry_cfg: GeometryConfig, panels: PanelInfo, result: SolverResult
 ) -> None:
     plt.figure()
-    plt.title("$$C_p$$ distribution")
+    plt.title("C_p distribution")
 
     plt.xlabel("x/c")
     plt.ylabel("y/c")
@@ -88,7 +88,7 @@ def plot_cp_distribution(
         angles="xy",
         scale_units="xy",
         scale=1,
-        label="$$C_p$$",
+        label="$C_p$",
     )
     plt.legend()
     plt.show()

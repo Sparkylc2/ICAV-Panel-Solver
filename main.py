@@ -9,14 +9,14 @@ from tests import (test_kutta, test_lifting_cylinder,
                    test_source_cylinder_tangential)
 
 U_inf = 10  # m/s
-AoA = np.radians(5)  # rad
+AoA = np.radians(0)  # rad
 Chord = 0.15  # m
 Density = 1.225  # kg/m^3
 
 
 # initialize our initial flow configuration
 flow_cfg = FlowConfig(u_inf=U_inf, aoa=AoA, density=Density)
-geometry_cfg = GeometryConfig(coords=naca4("2412", 20), chord=Chord)
+geometry_cfg = GeometryConfig(coords=naca4("2412", 100), chord=Chord)
 
 # run the solver based on the geometry and flow configuration
 state = run_solver(geometry_cfg, flow_cfg)
@@ -30,5 +30,8 @@ test_kutta()
 # plotting
 plot_geometry(geometry_cfg=state.get_geometry_cfg())
 plot_chosen_te_panels(
+    geometry_cfg=geometry_cfg, panels=state.get_panels(), result=state.get_result()
+)
+plot_cp_distribution(
     geometry_cfg=geometry_cfg, panels=state.get_panels(), result=state.get_result()
 )
