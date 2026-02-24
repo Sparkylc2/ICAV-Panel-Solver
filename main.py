@@ -4,7 +4,8 @@ import numpy as np
 from panel_gen import cylinder, naca4
 from plotting import plot_chosen_te_panels, plot_cp_distribution, plot_geometry
 from solver import run_solver
-from structs import FlowConfig, GeometryConfig, PanelInfo, SolverState
+from structs import (FlowConfig, GeometryConfig, PanelInfo, SolverConfig,
+                     SolverState)
 from tests import (test_kutta, test_lifting_cylinder,
                    test_source_cylinder_tangential)
 
@@ -17,9 +18,10 @@ Density = 1.225  # kg/m^3
 # initialize our initial flow configuration
 flow_cfg = FlowConfig(u_inf=U_inf, aoa=AoA, density=Density)
 geometry_cfg = GeometryConfig(coords=naca4("2412", 100), chord=Chord)
+solver_cfg = SolverConfig(ENABLE_DEBUG_PLOTTING=True, USE_SINGLE_VORTEX_METHOD=True)
 
 # run the solver based on the geometry and flow configuration
-state = run_solver(geometry_cfg, flow_cfg)
+state = run_solver(geometry_cfg, flow_cfg, solver_cfg)
 state.get_result().print_result()
 
 

@@ -2,23 +2,31 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from structs import (FlowConfig, GeometryConfig, InfluenceData, PanelInfo,
-                     SolverResult, SolverState)
+                     SolverConfig, SolverResult, SolverState)
+
+
+def passive_rotation(theta: float) -> np.ndarray:
+    c, s = np.cos(theta), np.sin(theta)
+    return np.array([[c, s], [-s, c]])
 
 
 def get_panel_info(geometry_cfg: GeometryConfig) -> PanelInfo:
     """
     returns all the info we need about the panel for calculations
+
+
     """
 
     coords = geometry_cfg.coords
 
     # [x_p - x_p-1, y_p - y_p-1]
     d_coords = np.diff(coords, axis=0)
-    # [x_p + x_p+1, y_p + y_p-1]
+    # [x_p + x_p+1, y_p + y_p+1]
     a_coords = coords[:-1] + coords[1:]
 
     # number of panels (-1 as we are joining points with edges)
-    n_panels = len(coords[:, 0]) - 1
+    n_panels = coords.shape[0] - 1
+
     # panel lengths
     l_panels = np.sqrt(d_coords[:, 0] ** 2 + d_coords[:, 1] ** 2)
     # control point coordinates
@@ -182,6 +190,59 @@ def get_vortex_influence_coefficients(
     )
 
 
+def get_vortex_influence_coefficients_single_vortex(
+    panels: PanelInfo,
+    source_influence: InfluenceData,
+    flow_cfg: FlowConfig,
+    geometry_cfg: GeometryConfig,
+) -> InfluenceData:
+
+    # vortex coordinates (in global FOR, slightly arbitrary)
+    x_v = geometry_cfg.chord / 4
+    y_v = 0.0
+
+    # we still normalize as having gamma/(u_inf * c) = 1
+    gamma = flow_cfg.u_inf * geometry_cfg.chord
+
+    # the control point coordinates (in global FOR)
+    x_p = panels.ctrl_point_coords[:, 0]
+    y_p = panels.ctrl_point_coords[:, 1]
+
+    # the two numerators for the induced velocity by the vortex
+    dx = x_p - x_v
+    dy = y_p - y_v
+
+    # common term
+    k_inv_r2 = gamma / (2 * np.pi * (dx**2 + dy**2))
+
+    # the components of induced velocity (in global FOR)
+    u_t_gamma = -k_inv_r2 * dy
+    u_n_gamma = k_inv_r2 * dx
+
+    # set up the rotation matrix
+    R = np.moveaxis(passive_rotation(panels.panel_angles), -1, 0)  # (N, 2, 2)
+    # our rotated u (panel p's FOR)
+    u_p_gamma = np.einsum("nij,nj->ni", R, np.column_stack([u_t_gamma, u_n_gamma]))
+
+    A_rhs = -u_p_gamma[:, 1]  # induced normal velocity (in panel p's FOR)
+    B_contribution = u_p_gamma[:, 0]  # induced tangential velocity (in panel p's FOR)
+
+    # solve for m_q_gamma using the normal velocity and satisfying the no-penetration condition
+    m_q_gamma = np.linalg.solve(source_influence.A_pq, A_rhs)
+
+    # solving for our induced tangential velocity
+    Q_p_gamma = source_influence.B_pq @ m_q_gamma + B_contribution
+
+    return InfluenceData(
+        A_pq=source_influence.A_pq,
+        B_pq=source_influence.B_pq,
+        A_rhs=A_rhs,
+        B_contribution=B_contribution,
+        m=m_q_gamma,
+        Q=Q_p_gamma,
+    )
+
+
 def superimpose_solutions(
     source_influence: InfluenceData,
     vortex_influence: InfluenceData,
@@ -231,12 +292,18 @@ def superimpose_solutions(
     )
 
 
-def run_solver(geometry_cfg: GeometryConfig, flow_cfg: FlowConfig) -> SolverState:
+def run_solver(
+    geometry_cfg: GeometryConfig,
+    flow_cfg: FlowConfig,
+    solver_cfg: SolverConfig = SolverConfig(),
+) -> SolverState:
     """
-    self contained function to run the solver given a flow config and
-    geometry config
+    self contained function to run the solver given a flow config,
+    geometry config, and solver config
     """
-    state = SolverState(geometry_cfg=geometry_cfg, flow_cfg=flow_cfg)
+    state = SolverState(
+        geometry_cfg=geometry_cfg, flow_cfg=flow_cfg, solver_cfg=solver_cfg
+    )
     # get our panel data
     state.panels = get_panel_info(state.geometry_cfg)
 
@@ -246,12 +313,20 @@ def run_solver(geometry_cfg: GeometryConfig, flow_cfg: FlowConfig) -> SolverStat
     )
 
     # compute the vortex influence data
-    state.vortex_influence = get_vortex_influence_coefficients(
-        panels=state.panels,
-        source_influence=state.source_influence,
-        flow_cfg=state.flow_cfg,
-        geometry_cfg=state.geometry_cfg,
-    )
+    if solver_cfg.USE_SINGLE_VORTEX_METHOD:
+        state.vortex_influence = get_vortex_influence_coefficients_single_vortex(
+            panels=state.panels,
+            source_influence=state.source_influence,
+            flow_cfg=state.flow_cfg,
+            geometry_cfg=state.geometry_cfg,
+        )
+    else:
+        state.vortex_influence = get_vortex_influence_coefficients(
+            panels=state.panels,
+            source_influence=state.source_influence,
+            flow_cfg=state.flow_cfg,
+            geometry_cfg=state.geometry_cfg,
+        )
 
     # compute the result
     state.result = superimpose_solutions(

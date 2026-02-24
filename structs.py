@@ -4,7 +4,6 @@ from typing import Optional
 import numpy as np
 
 
-# describes the base parameters of the current operating regime/geometry
 @dataclass(frozen=True)
 class FlowConfig:
     u_inf: float = 10.0  # free-stream velocity (m/s)
@@ -18,7 +17,12 @@ class GeometryConfig:
     chord: float = 1.0  # chord (m)
 
 
-# fully describes all the panel information
+@dataclass(frozen=True)
+class SolverConfig:
+    ENABLE_DEBUG_PLOTTING: bool = True  # determines if we enable plots in the tests
+    USE_SINGLE_VORTEX_METHOD: bool = True  # determines which vortex function we use
+
+
 @dataclass(frozen=True)
 class PanelInfo:
     n_panels: int  # number of panels in our geometry
@@ -62,23 +66,17 @@ class SolverResult:
         print("=" * 70)
 
 
-# will store all information gathered during a solver pass (easier for debugging)
 @dataclass
 class SolverState:
     geometry_cfg: GeometryConfig  # the geometry of the airfoil
-    flow_cfg: FlowConfig  # the flow configuration (+chord)
+    flow_cfg: FlowConfig  # the flow configuration
+    solver_cfg: SolverConfig = SolverConfig(
+        ENABLE_DEBUG_PLOTTING=True, USE_SINGLE_VORTEX_METHOD=True
+    )  # the solver configuration
     panels: PanelInfo | None = None  # the panel geometry information
     source_influence: InfluenceData | None = None  # the influence data for source pass
     vortex_influence: InfluenceData | None = None  # the influence data for vortex pass
     result: SolverResult | None = None  # the final result from the solver
-
-    def assert_done(self) -> None:
-        assert self.geometry_cfg is not None
-        assert self.flow_cfg is not None
-        assert self.panels is not None
-        assert self.source_influence is not None
-        assert self.vortex_influence is not None
-        assert self.result is not None
 
     def get_geometry_cfg(self) -> GeometryConfig:
         assert self.geometry_cfg is not None

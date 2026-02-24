@@ -4,7 +4,7 @@ import numpy as np
 from panel_gen import cylinder, naca4
 from solver import run_solver
 from structs import (FlowConfig, GeometryConfig, InfluenceData, PanelInfo,
-                     SolverResult, SolverState)
+                     SolverConfig, SolverResult, SolverState)
 
 ENABLE_TEST_PLOTTING = False
 
@@ -46,7 +46,7 @@ def test_source_cylinder_tangential() -> None:
         (state.get_source_influence().B_pq @ state.get_source_influence().m).min(),
         (state.get_source_influence().B_pq @ state.get_source_influence().m).max(),
     )
-    if ENABLE_TEST_PLOTTING:
+    if state.solver_cfg.ENABLE_DEBUG_PLOTTING:
         plt.figure()
         plt.title("Cylinder Test Results")
         plt.plot(
@@ -108,7 +108,7 @@ def test_lifting_cylinder():
     print("testing the full solver (source + vortex) on a cylinder")
     coords = cylinder(160)
     flow_cfg = FlowConfig(u_inf=10.0, aoa=np.radians(5.0))
-    state = run_solver(GeometryConfig(coords=coords), flow_cfg=flow_cfg)
+    state = run_solver(GeometryConfig(coords=coords), flow_cfg, SolverConfig())
 
     result = state.get_result()
     ctrl = state.get_panels().ctrl_point_coords
@@ -144,7 +144,7 @@ def test_lifting_cylinder():
     )
 
     print(f"calculated lift coefficient (C_L): {result.C_L:.4f}")
-    if ENABLE_TEST_PLOTTING:
+    if state.solver_cfg.ENABLE_DEBUG_PLOTTING:
         plt.figure(figsize=(10, 5))
         plt.title("Tangential Velocity: Lifting Cylinder")
         plt.plot(theta_polar, result.Q, "ro", label="calculated Q (superimposed)")
