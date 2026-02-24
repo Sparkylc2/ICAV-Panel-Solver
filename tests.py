@@ -6,8 +6,6 @@ from solver import run_solver
 from structs import (FlowConfig, GeometryConfig, InfluenceData, PanelInfo,
                      SolverConfig, SolverResult, SolverState)
 
-ENABLE_TEST_PLOTTING = False
-
 
 def test_source_cylinder_tangential() -> None:
     print("=" * 70)
@@ -46,6 +44,8 @@ def test_source_cylinder_tangential() -> None:
         (state.get_source_influence().B_pq @ state.get_source_influence().m).min(),
         (state.get_source_influence().B_pq @ state.get_source_influence().m).max(),
     )
+    state.get_result().print_result()
+
     if state.solver_cfg.ENABLE_DEBUG_PLOTTING:
         plt.figure()
         plt.title("Cylinder Test Results")

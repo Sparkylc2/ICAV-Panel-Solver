@@ -19,8 +19,8 @@ class GeometryConfig:
 
 @dataclass(frozen=True)
 class SolverConfig:
-    ENABLE_DEBUG_PLOTTING: bool = True  # determines if we enable plots in the tests
-    USE_SINGLE_VORTEX_METHOD: bool = True  # determines which vortex function we use
+    ENABLE_DEBUG_PLOTTING: bool = False  # determines if we enable plots in the tests
+    USE_SINGLE_VORTEX_METHOD: bool = False  # determines which vortex function we use
 
 
 @dataclass(frozen=True)

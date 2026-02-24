@@ -5,7 +5,7 @@ from structs import (FlowConfig, GeometryConfig, InfluenceData, PanelInfo,
                      SolverConfig, SolverResult, SolverState)
 
 
-def passive_rotation(theta: float) -> np.ndarray:
+def passive_rotation(theta: np.ndarray) -> np.ndarray:
     c, s = np.cos(theta), np.sin(theta)
     return np.array([[c, s], [-s, c]])
 
@@ -13,8 +13,6 @@ def passive_rotation(theta: float) -> np.ndarray:
 def get_panel_info(geometry_cfg: GeometryConfig) -> PanelInfo:
     """
     returns all the info we need about the panel for calculations
-
-
     """
 
     coords = geometry_cfg.coords
@@ -52,83 +50,61 @@ def get_source_influence_coefficients(
     panels: PanelInfo, flow_cfg: FlowConfig
 ) -> InfluenceData:
     """
-    for every p'th panel we loop around every other q'th panel and calculate
-    the normal and tangential contributions of the q'th panel on the p'th one
+    for every p'th panel we calculate the normal and tangential velocity
+    contributions from every other q'th panel
 
-    the source is in panel q's frame of reference (FOR), so we first need to convert
-    the displacement between the panels from the global FOR to panel q's FOR
-    and then once we calculate the induced velocity we convert that to panel p's
-    FOR
+    the source is in panel q's frame of reference (FOR), so we first convert
+    the displacement from global FOR to panel q's FOR, compute the induced
+    velocity, and then rotate into panel p's FOR
     """
+    N = panels.n_panels
 
-    # we can quickly compute the two freestream contributions
+    # freestream contributions (in each panel p's FOR)
     A_rhs = -flow_cfg.u_inf * np.sin(flow_cfg.aoa - panels.panel_angles)
     B_contribution = flow_cfg.u_inf * np.cos(flow_cfg.aoa - panels.panel_angles)
 
-    # initializing the influence matrices
-    A_pq = np.zeros((panels.n_panels, panels.n_panels))
-    B_pq = np.zeros((panels.n_panels, panels.n_panels))
+    # displacement from q's control point to p's control point (global FOR)
+    # d_global[p, q, :] = [x_p - x_q, y_p - y_q]
+    d_global = (
+        panels.ctrl_point_coords[:, np.newaxis, :]
+        - panels.ctrl_point_coords[np.newaxis, :, :]
+    )  # (N, N, 2)
 
-    for p in range(panels.n_panels):
-        for q in range(panels.n_panels):
+    # rotation matrices for each panel (global FOR -> panel FOR)
+    R = np.moveaxis(passive_rotation(panels.panel_angles), -1, 0)  # (N, 2, 2)
 
-            # self influence is always -0.5, 0.0
-            # if p == q:
-            #     A_pq[p][q] = 0.5
-            #     B_pq[p][q] = 0.0
-            #     continue
+    # transform displacement into panel q's FOR
+    # d_local[p, q, :] = R_q @ d_global[p, q, :]
+    d_local = np.einsum("qij,pqj->pqi", R, d_global)  # (N, N, 2)
+    x_pq = d_local[:, :, 0]
+    y_pq = d_local[:, :, 1]
 
-            # 99% sure its this way around
-            # x_p - x_q
-            d_x = panels.ctrl_point_coords[p][0] - panels.ctrl_point_coords[q][0]
-            # y_p - y_q
-            d_y = panels.ctrl_point_coords[p][1] - panels.ctrl_point_coords[q][1]
+    # induced velocity components in q's FOR (per unit source strength)
+    half_l = 0.5 * panels.l_panels[np.newaxis, :]  # (1, N) indexed by q
+    v_xq = (1 / (4 * np.pi)) * np.log(
+        ((x_pq + half_l) ** 2 + y_pq**2) / ((x_pq - half_l) ** 2 + y_pq**2)
+    )
+    v_yq = (1 / (2 * np.pi)) * np.arctan2(
+        y_pq * panels.l_panels[np.newaxis, :],
+        x_pq**2 + y_pq**2 - half_l**2,
+    )
 
-            # transform the relative displacement into panel q's FOR
-            if p == q:
-                x_pq = 0.0
-                y_pq = 0.0
-            else:
-                x_pq = d_x * panels.cos_angles[q] + d_y * panels.sin_angles[q]
-                y_pq = d_y * panels.cos_angles[q] - d_x * panels.sin_angles[q]
+    # transforming velocity from q's FOR to p's FOR
+    # R_pq = R_p @ R_q^T (composed rotation from q's FOR to p's FOR)
+    v_q = np.stack([v_xq, v_yq], axis=-1)  # (N, N, 2)
+    R_pq = np.einsum("pij,qkj->pqik", R, R)  # (N, N, 2, 2)
+    v_p = np.einsum("pqij,pqj->pqi", R_pq, v_q)  # (N, N, 2)
 
-            # compute the normal and tangential velocity contributions (in panel q's FOR)
-            len_panel_q = panels.l_panels[q]
+    # influence matrices (in p's FOR)
+    B_pq = v_p[:, :, 0]  # tangential
+    A_pq = v_p[:, :, 1]  # normal
 
-            v_xq_num = (x_pq + 0.5 * len_panel_q) ** 2 + y_pq**2
-            v_xq_denom = (x_pq - 0.5 * len_panel_q) ** 2 + y_pq**2
-            # the tangential velocity component (in q's FOR)
-            v_xq = 1 / (4 * np.pi) * np.log(v_xq_num / v_xq_denom)
-
-            v_yq_num = y_pq * len_panel_q
-            v_yq_denom = x_pq**2 + y_pq**2 - (0.5 * len_panel_q) ** 2
-            # the normal velocity component (in q's FOR)
-            v_yq = 1 / (2 * np.pi) * np.arctan2(v_yq_num, v_yq_denom)
-
-            # now we convert to p's FOR to get the normal and tangential velocity contributions
-            # theta_q - theta_p
-            d_theta = panels.panel_angles[q] - panels.panel_angles[p]
-            sin_d_theta = np.sin(d_theta)
-            cos_d_theta = np.cos(d_theta)
-
-            # the velocity contribution (in p's FOR)
-            # v_n = v_yq * cos_d_theta - v_xq * sin_d_theta  # normal
-            # v_t = v_xq * cos_d_theta + v_yq * sin_d_theta  # tangential
-            v_n = v_yq * cos_d_theta + v_xq * sin_d_theta  # normal
-            v_t = v_xq * cos_d_theta - v_yq * sin_d_theta  # tangential
-
-            # placing in our influence matrices
-            A_pq[p][q] = v_n
-            B_pq[p][q] = v_t
-
-    # now we can solve for the source strengths m_q (this just enforces no-pen)
+    # solve for source strengths m_q (enforcing no-penetration)
     m_q = np.linalg.solve(A_pq, A_rhs)
 
-    # with our strengths we can now solve for the tangential velocity by adding
-    # the freestream contribution (in p's FOR)
+    # tangential velocity at each panel
     Q_p = B_pq @ m_q + B_contribution
 
-    # returning our influence data
     return InfluenceData(
         A_pq=A_pq, B_pq=B_pq, A_rhs=A_rhs, B_contribution=B_contribution, m=m_q, Q=Q_p
     )
@@ -216,13 +192,13 @@ def get_vortex_influence_coefficients_single_vortex(
     k_inv_r2 = gamma / (2 * np.pi * (dx**2 + dy**2))
 
     # the components of induced velocity (in global FOR)
-    u_t_gamma = -k_inv_r2 * dy
-    u_n_gamma = k_inv_r2 * dx
+    u_x_gamma = -k_inv_r2 * dy
+    u_y_gamma = k_inv_r2 * dx
 
     # set up the rotation matrix
     R = np.moveaxis(passive_rotation(panels.panel_angles), -1, 0)  # (N, 2, 2)
     # our rotated u (panel p's FOR)
-    u_p_gamma = np.einsum("nij,nj->ni", R, np.column_stack([u_t_gamma, u_n_gamma]))
+    u_p_gamma = np.einsum("nij,nj->ni", R, np.column_stack([u_x_gamma, u_y_gamma]))
 
     A_rhs = -u_p_gamma[:, 1]  # induced normal velocity (in panel p's FOR)
     B_contribution = u_p_gamma[:, 0]  # induced tangential velocity (in panel p's FOR)
@@ -263,9 +239,6 @@ def superimpose_solutions(
     te_panel_indices = [te_coordinate_idx - 1, te_coordinate_idx]
 
     # find dQ_te for both solutions
-    print("Q_te source", source_influence.Q[te_panel_indices])
-    print("Q_te vortex", vortex_influence.Q[te_panel_indices])
-
     dQ_te = source_influence.Q[te_panel_indices].sum()
     dQ_te_gamma = vortex_influence.Q[te_panel_indices].sum()
 
