@@ -1,22 +1,17 @@
 import numpy as np
 
-
 def cylinder(n_panels: int) -> np.ndarray:
     """
     generates a cylinder with n panels
     first and last points are coincident at the LE.
     """
-
     # get our theta values
     theta = np.linspace(2 * np.pi, 0, n_panels + 1)
-
     # generate the circle (has radius 0.5, and we shift so the TE is at 1)
     x_coords = 0.5 * np.cos(theta) + 0.5
     y_coords = 0.5 * np.sin(theta)
-
     x_coords[-1] = x_coords[0]
     y_coords[-1] = y_coords[0]
-
     return np.column_stack([x_coords, y_coords])
 
 
@@ -24,9 +19,7 @@ def cylinder(n_panels: int) -> np.ndarray:
 def naca4(designation: str, n_panels: int) -> np.ndarray:
     """
     Generate NACA 4-series airfoil with Chebyshev-spaced panels.
-
     Returns coordinates ordered clockwise from the LE along the upper
-
     First and last points are coincident at the LE.
 
     Parameters
@@ -69,16 +62,13 @@ def naca4(designation: str, n_panels: int) -> np.ndarray:
     # camber line and its gradient
     yc = np.zeros_like(x)
     dyc = np.zeros_like(x)
-
     if p > 0.0:
         front = x <= p
         back = ~front
-
         yc[front] = (m / p**2) * (2.0 * p * x[front] - x[front] ** 2)
         yc[back] = (m / (1.0 - p) ** 2) * (
             (1.0 - 2.0 * p) + 2.0 * p * x[back] - x[back] ** 2
         )
-
         dyc[front] = (2.0 * m / p**2) * (p - x[front])
         dyc[back] = (2.0 * m / (1.0 - p) ** 2) * (p - x[back])
 
@@ -89,6 +79,12 @@ def naca4(designation: str, n_panels: int) -> np.ndarray:
     yu = yc + yt * np.cos(theta)
     xl = x + yt * np.sin(theta)
     yl = yc - yt * np.cos(theta)
+
+    # FIX: Close the trailing edge by averaging upper/lower TE coordinates.
+    # Without this, a spurious near-vertical panel bridges the TE gap,
+    # breaking symmetry (e.g. NACA 0012 at 0° gave C_L ≠ 0).
+    xu[-1] = (xu[-1] + xl[-1]) / 2.0
+    yu[-1] = (yu[-1] + yl[-1]) / 2.0
 
     # assemble clockwise from LE:
     #   upper (LE -> TE), then lower (TE -> LE)
