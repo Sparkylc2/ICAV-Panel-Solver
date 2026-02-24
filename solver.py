@@ -138,8 +138,8 @@ def get_vortex_influence_coefficients(
     gamma = flow_cfg.u_inf * geometry_cfg.chord / np.sum(panels.l_panels)
 
     # get our influence matrices (relation from the paper)
-    A_pq_gamma = source_influence.B_pq
-    B_pq_gamma = -source_influence.A_pq
+    A_pq_gamma = -source_influence.B_pq
+    B_pq_gamma = source_influence.A_pq
 
     # the total velocity contributions (in p's FOR) due to the other q panels
     U_np_gamma = gamma * A_pq_gamma.sum(axis=1)  # normal velocity
